@@ -1,16 +1,15 @@
 package main
 
 import (
-	"github.com/ashwanthkumar/slack-go-webhook"
+	"fmt"
+
+	slack "github.com/ashwanthkumar/slack-go-webhook"
 )
 
-const proposalPrefixTestnetUrl = "https://explorer.stavr.tech/Composable-Testnet/gov/"
-const proposalPrefixMainnetUrl = "https://explorer.stavr.tech/Composable-Mainnet/gov/"
-
-func postToSlack(chainId string, proposal Proposal, slackWebookUrl string) error {
+func postToSlack(chainConfig ChainConfig, proposal Proposal, slackWebookUrl string) error {
 
 	attachment := slack.Attachment{}
-	attachment.AddField(slack.Field{Title: "Chain:", Value: chainId})
+	attachment.AddField(slack.Field{Title: "Chain:", Value: chainConfig.ChainID})
 	attachment.AddField(slack.Field{Title: "ID", Value: proposal.ID})
 	attachment.AddField(slack.Field{Title: "Title", Value: proposal.Title})
 	attachment.AddField(slack.Field{Title: "Summary", Value: proposal.Summary})
@@ -19,15 +18,17 @@ func postToSlack(chainId string, proposal Proposal, slackWebookUrl string) error
 	attachment.AddField(slack.Field{Title: "VotingStartTime", Value: proposal.VotingStartTime})
 	attachment.AddField(slack.Field{Title: "VotingEndTime", Value: proposal.VotingEndTime})
 
-	switch chainId {
-	case "centauri-1":
-		attachment.AddAction(slack.Action{Type: "button", Text: "Open", Url: proposalPrefixMainnetUrl + proposal.ID, Style: "primary"})
-	case "banksy-testnet-5":
-		attachment.AddAction(slack.Action{Type: "button", Text: "Open", Url: proposalPrefixTestnetUrl + proposal.ID, Style: "primary"})
+	if chainConfig.ExplorerURL != "" {
+		explorerUrl := chainConfig.ExplorerURL
+		if len(explorerUrl) > 0 && explorerUrl[len(explorerUrl)-1] != '/' {
+			explorerUrl += "/"
+		}
+		explorerUrl += proposal.ID
+		attachment.AddAction(slack.Action{Type: "button", Text: "Open", Url: explorerUrl, Style: "primary"})
 	}
 
 	payload := slack.Payload{
-		Text:        "Found new governance proposal",
+		Text:        fmt.Sprintf("*NEW PROPOSAL: %s*", chainConfig.ChainID),
 		Username:    "robot",
 		IconEmoji:   ":monkey_face:",
 		Attachments: []slack.Attachment{attachment},

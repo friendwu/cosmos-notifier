@@ -1,0 +1,20 @@
+# Logging configuration
+log_level: warn  # Options: trace, debug, info, warn, error, fatal, panic
+
+# How often to check for new proposals
+fetch_interval: 1m  # Examples: 30s, 1m, 5m, 1h
+
+# Slack configuration
+slack:
+  webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+# Chain configurations
+chains:
+  - chain_id: "centauri-1"
+    endpoint: "https://rpc.composable.centauri.polypore.xyz"
+    explorer_url: "https://explorer.stavr.tech/Composable-Mainnet/gov/"
+  
+  - chain_id: "banksy-testnet-5"
+    endpoint: "https://rpc.composable.banksy-testnet.polypore.xyz"
+    explorer_url: "https://explorer.stavr.tech/Composable-Testnet/gov/"
+

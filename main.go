@@ -2,77 +2,70 @@ package main
 
 import (
 	"os"
-	"strings"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 )
 
-const defaultInterval time.Duration = time.Minute
-
-func setLogLevel() {
-	level, exists := os.LookupEnv("LOG_LEVEL")
-	if !exists {
-		log.Info("LOG_LEVEL not set, defaulting to warning")
-		log.SetLevel(log.WarnLevel)
-		return
-	}
-
-	parsedLevel, err := log.ParseLevel(strings.ToLower(level))
-	if err != nil {
-		log.Warnf("Invalid LOG_LEVEL '%s', defaulting to warning", level)
-		log.SetLevel(log.WarnLevel)
-		return
-	}
-
-	log.SetLevel(parsedLevel)
-	log.Infof("Logging level set to %s", parsedLevel)
-}
-
 func init() {
-
 	log.SetOutput(os.Stdout)
-	setLogLevel()
 }
 
 func main() {
-
-	requiredVars := []string{"COSMOS_ENDPOINT", "SLACK_WEBHOOK_URL", "CHAIN_ID"}
-	for _, varName := range requiredVars {
-		if os.Getenv(varName) == "" {
-			log.Panicf("Error: %s is not defined\n", varName)
-		}
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "config.yaml"
 	}
 
-	cosmosEndpoint := os.Getenv("COSMOS_ENDPOINT")
-	slackWebhookURL := os.Getenv("SLACK_WEBHOOK_URL")
-	chainID := os.Getenv("CHAIN_ID")
-
-	interval, err := time.ParseDuration(os.Getenv("FETCH_INTERVAL"))
+	config, err := loadConfig(configPath)
 	if err != nil {
-		log.Errorf("Error parsing FETCH_INTERVAL: %s, defaulting to 1m\n", err)
-		interval = defaultInterval
+		log.Panicf("Failed to load config: %v", err)
 	}
 
-	var lastProposalId string
-	firstIteration := true
+	setLogLevelFromConfig(config.LogLevel)
+	interval := parseInterval(config.FetchInterval)
+
+	log.Infof("Starting monitoring for %d chain(s)", len(config.Chains))
+
+	var wg sync.WaitGroup
+	for _, chainConfig := range config.Chains {
+		wg.Add(1)
+		go monitorChain(chainConfig, config.Slack.WebhookURL, interval, &wg)
+	}
+
+	wg.Wait()
+}
+
+func monitorChain(chainConfig ChainConfig, slackWebhookURL string, interval time.Duration, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	var lastProposalID string
+	//firstIteration := true 
+	//FIXME
+	firstIteration := false
+
+	log.Infof("Starting monitor for chain: %s", chainConfig.ChainID)
+
 	for {
-		latestProposal, err := getLatestProposal(cosmosEndpoint)
+		latestProposal, err := getLatestProposal(chainConfig.Endpoint)
 		if err != nil {
-			log.Errorf("Error fetching proposal: %s\n", err)
+			log.Errorf("[%s] Error fetching proposal: %s", chainConfig.ChainID, err)
+			time.Sleep(interval)
 			continue
 		}
 
 		// post to slack only if didn't posted before
-		if !firstIteration && lastProposalId != latestProposal.ID {
-			err = postToSlack(chainID, *latestProposal, slackWebhookURL)
+		if !firstIteration && lastProposalID != latestProposal.ID {
+			err = postToSlack(chainConfig, *latestProposal, slackWebhookURL)
 			if err != nil {
-				log.Errorf("Error posting to slack: %s\n", err)
-				continue
+				log.Errorf("[%s] Error posting to slack: %s", chainConfig.ChainID, err)
+			} else {
+				log.Infof("[%s] Posted new proposal %s to slack", chainConfig.ChainID, latestProposal.ID)
 			}
 		}
 
-		lastProposalId = latestProposal.ID
+		lastProposalID = latestProposal.ID
 		firstIteration = false
 
 		time.Sleep(interval)

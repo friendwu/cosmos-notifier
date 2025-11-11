@@ -11,9 +11,10 @@ import (
 )
 
 type Config struct {
-	LogLevel      string      `yaml:"log_level"`
-	FetchInterval string      `yaml:"fetch_interval"`
-	Slack         SlackConfig `yaml:"slack"`
+	LogLevel      string       `yaml:"log_level"`
+	FetchInterval string       `yaml:"fetch_interval"`
+	DataDir       string       `yaml:"data_dir"`
+	Slack         SlackConfig  `yaml:"slack"`
 	Chains        []ChainConfig `yaml:"chains"`
 }
 
@@ -44,6 +45,9 @@ func loadConfig(configPath string) (*Config, error) {
 	}
 	if config.FetchInterval == "" {
 		config.FetchInterval = "1m"
+	}
+	if config.DataDir == "" {
+		config.DataDir = "data"
 	}
 
 	// Validate config

@@ -4,6 +4,9 @@ log_level: warn  # Options: trace, debug, info, warn, error, fatal, panic
 # How often to check for new proposals
 fetch_interval: 1m  # Examples: 30s, 1m, 5m, 1h
 
+# Directory to store persisted proposal data
+data_dir: data  # Default: "data"
+
 # Slack configuration
 slack:
   webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"

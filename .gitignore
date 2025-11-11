@@ -19,3 +19,8 @@
 
 # Go workspace file
 go.work
+
+# Persisted proposal data
+data/
+
+config.yaml

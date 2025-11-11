@@ -10,6 +10,10 @@ import (
 
 func init() {
 	log.SetOutput(os.Stdout)
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp: true,
+		TimestampFormat: "2006-01-02 15:04:05",
+	})
 }
 
 func main() {
@@ -31,42 +35,79 @@ func main() {
 	var wg sync.WaitGroup
 	for _, chainConfig := range config.Chains {
 		wg.Add(1)
-		go monitorChain(chainConfig, config.Slack.WebhookURL, interval, &wg)
+		go monitorChain(chainConfig, config.Slack.WebhookURL, config.DataDir, interval, &wg)
 	}
 
 	wg.Wait()
 }
 
-func monitorChain(chainConfig ChainConfig, slackWebhookURL string, interval time.Duration, wg *sync.WaitGroup) {
+func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir string, interval time.Duration, wg *sync.WaitGroup) {
 	defer wg.Done()
-
-	var lastProposalID string
-	//firstIteration := true 
-	//FIXME
-	firstIteration := false
 
 	log.Infof("Starting monitor for chain: %s", chainConfig.ChainID)
 
+	// Load persisted proposals on startup
+	persisted, err := loadPersistedProposals(dataDir, chainConfig.ChainID)
+	if err != nil {
+		log.Warnf("[%s] Failed to load persisted proposals: %s, starting fresh", chainConfig.ChainID, err)
+		persisted = make(map[string]Proposal)
+	} else {
+		log.Infof("[%s] Loaded %d persisted proposals", chainConfig.ChainID, len(persisted))
+	}
+
 	for {
-		latestProposal, err := getLatestProposal(chainConfig.Endpoint)
+		uncompleted, err := fetchUncompletedProposals(chainConfig.Endpoint)
 		if err != nil {
-			log.Errorf("[%s] Error fetching proposal: %s", chainConfig.ChainID, err)
+			log.Errorf("[%s] Error fetching uncompleted proposals: %s", chainConfig.ChainID, err)
 			time.Sleep(interval)
 			continue
 		}
 
-		// post to slack only if didn't posted before
-		if !firstIteration && lastProposalID != latestProposal.ID {
-			err = postToSlack(chainConfig, *latestProposal, slackWebhookURL)
+		// Deep copy uncompleted into all
+		all := make(map[string]Proposal, len(uncompleted))
+		for k, v := range uncompleted {
+			all[k] = v
+		}
+		
+		for proposalID, persistedProposal := range persisted {
+			currentProposal, err := fetchProposalByID(chainConfig.Endpoint, proposalID)
 			if err != nil {
-				log.Errorf("[%s] Error posting to slack: %s", chainConfig.ChainID, err)
-			} else {
-				log.Infof("[%s] Posted new proposal %s to slack", chainConfig.ChainID, latestProposal.ID)
+				log.Warnf("[%s] Error fetching persisted proposal %s: %s, keeping in persisted", 
+					chainConfig.ChainID, proposalID, err)
+				continue
+			}
+
+			if persistedProposal.Status != currentProposal.Status {
+				all[proposalID] = *currentProposal
 			}
 		}
 
-		lastProposalID = latestProposal.ID
-		firstIteration = false
+		sendSlackFailed := false 
+		changes := compareProposals(all, persisted)
+		if len(changes) == 0 {
+			continue
+		}
+		
+		for _, change := range changes {
+			err = postToSlack(chainConfig, change, slackWebhookURL)
+			if err != nil {
+				log.Errorf("[%s] Error posting to slack: %s", chainConfig.ChainID, err)
+				sendSlackFailed = true
+				break  
+			}
+		}
+
+		if !sendSlackFailed {
+			err = savePersistedProposals(dataDir, chainConfig.ChainID, uncompleted)
+			if err != nil {
+				log.Errorf("[%s] Error saving persisted proposals: %s", chainConfig.ChainID, err)
+			}
+
+			if err == nil {
+				// Update persisted map for next iteration
+				persisted = uncompleted // keep only uncompleted proposals TODO shall we do deep copy?
+			}
+		}
 
 		time.Sleep(interval)
 	}

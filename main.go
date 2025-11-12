@@ -56,7 +56,7 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 	}
 
 	for {
-		uncompleted, err := fetchUncompletedProposals(chainConfig.Endpoint)
+		uncompleted, err := fetchUncompletedProposals(chainConfig.Endpoint, chainConfig.Validator)
 		if err != nil {
 			log.Errorf("[%s] Error fetching uncompleted proposals: %s", chainConfig.ChainID, err)
 			time.Sleep(interval)
@@ -70,7 +70,7 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 		}
 		
 		for proposalID, persistedProposal := range persisted {
-			currentProposal, err := fetchProposalByID(chainConfig.Endpoint, proposalID)
+			currentProposal, err := fetchProposalByID(chainConfig.Endpoint, proposalID, chainConfig.Validator)
 			if err != nil {
 				log.Warnf("[%s] Error fetching persisted proposal %s: %s, keeping in persisted", 
 					chainConfig.ChainID, proposalID, err)
@@ -83,13 +83,25 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 		}
 
 		sendSlackFailed := false 
-		changes := compareProposals(all, persisted)
-		if len(changes) == 0 {
+		result := compareProposals(all, persisted)
+		
+		if len(result.ProposalChanges) == 0 && len(result.VoteChanges) == 0 {
 			continue
 		}
 		
-		for _, change := range changes {
-			err = postToSlack(chainConfig, change, slackWebhookURL)
+		// Send vote change notifications
+		for _, voteChange := range result.VoteChanges {
+			err = postVoteChangeToSlack(chainConfig, voteChange, slackWebhookURL)
+			if err != nil {
+				log.Errorf("[%s] Error posting vote change to slack: %s", chainConfig.ChainID, err)
+				sendSlackFailed = true
+				break
+			}
+		}
+		
+		// Send proposal change notifications (new proposals, status changes)
+		for _, change := range result.ProposalChanges {
+			err = postProposalChangeToSlack(chainConfig, change, slackWebhookURL)
 			if err != nil {
 				log.Errorf("[%s] Error posting to slack: %s", chainConfig.ChainID, err)
 				sendSlackFailed = true

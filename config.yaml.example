@@ -16,8 +16,10 @@ chains:
   - chain_id: "centauri-1"
     endpoint: "https://rpc.composable.centauri.polypore.xyz"
     explorer_url: "https://explorer.stavr.tech/Composable-Mainnet/gov/"
+    validator: "prefixabcdeffefefef"
   
   - chain_id: "banksy-testnet-5"
     endpoint: "https://rpc.composable.banksy-testnet.polypore.xyz"
     explorer_url: "https://explorer.stavr.tech/Composable-Testnet/gov/"
+    validator: "prefixabcdeffefefef"
 

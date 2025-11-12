@@ -6,7 +6,7 @@ import (
 	slack "github.com/ashwanthkumar/slack-go-webhook"
 )
 
-func postToSlack(chainConfig ChainConfig, change ProposalChange, slackWebookUrl string) error {
+func postProposalChangeToSlack(chainConfig ChainConfig, change ProposalChange, slackWebookUrl string) error {
 	proposal := change.Proposal
 	
 	attachment := slack.Attachment{}
@@ -16,7 +16,7 @@ func postToSlack(chainConfig ChainConfig, change ProposalChange, slackWebookUrl 
 	
 	if change.IsNew {
 		attachment.AddField(slack.Field{Title: "Status", Value: proposal.Status})
-	} else {
+	} else if change.NewStatus != "" {
 		attachment.AddField(slack.Field{Title: "Status Changed", Value: fmt.Sprintf("%s → %s", change.OldStatus, change.NewStatus)})
 	}
 
@@ -39,13 +39,65 @@ func postToSlack(chainConfig ChainConfig, change ProposalChange, slackWebookUrl 
 	if change.IsNew {
 		text = fmt.Sprintf("*NEW PROPOSAL: %s*", chainConfig.ChainID)
 	} else {
-		text = fmt.Sprintf("*PROPOSAL STATE CHANGED: %s*", chainConfig.ChainID)
+		text = fmt.Sprintf("*PROPOSAL UPDATE: %s*", chainConfig.ChainID)
 	}
 
 	payload := slack.Payload{
 		Text:        text,
-		Username:    "robot",
+		Username:    "Cosmos Proposal Notifier",
 		IconEmoji:   ":monkey_face:",
+		Attachments: []slack.Attachment{attachment},
+	}
+	err := slack.Send(slackWebookUrl, "", payload)
+	if len(err) > 0 {
+		return err[0]
+	}
+	return nil
+}
+
+func postVoteChangeToSlack(chainConfig ChainConfig, voteChange VoteChange, slackWebookUrl string) error {
+	proposal := voteChange.Proposal
+	
+	attachment := slack.Attachment{}
+
+	attachment.AddField(slack.Field{Title: "Proposal ID", Value: proposal.ID})
+	attachment.AddField(slack.Field{Title: "Title", Value: proposal.Title})
+	
+	oldVoteStr := "not voted"
+	if voteChange.OldVote != nil {
+		oldVoteStr = voteChange.OldVote.GetOption()
+		if oldVoteStr == "" {
+			oldVoteStr = "not voted"
+		}
+	}
+	
+	newVoteStr := "not voted"
+	if voteChange.NewVote != nil {
+		newVoteStr = voteChange.NewVote.GetOption()
+		if newVoteStr == "" {
+			newVoteStr = "not voted"
+		}
+	}
+	
+	attachment.AddField(slack.Field{Title: "Vote Changed", Value: fmt.Sprintf("%s → %s", oldVoteStr, newVoteStr)})
+	
+	if chainConfig.Validator != "" {
+		attachment.AddField(slack.Field{Title: "Validator", Value: chainConfig.Validator})
+	}
+
+	if chainConfig.ExplorerURL != "" {
+		explorerUrl := chainConfig.ExplorerURL
+		if len(explorerUrl) > 0 && explorerUrl[len(explorerUrl)-1] != '/' {
+			explorerUrl += "/"
+		}
+		explorerUrl += proposal.ID
+		attachment.AddAction(slack.Action{Type: "button", Text: "Open", Url: explorerUrl, Style: "primary"})
+	}
+
+	payload := slack.Payload{
+		Text:        fmt.Sprintf("*VALIDATOR VOTE UPDATE: %s*", chainConfig.ChainID),
+		Username:    "Cosmos Proposal Notifier",
+		IconEmoji:   ":ballot_box_with_check:",
 		Attachments: []slack.Attachment{attachment},
 	}
 	err := slack.Send(slackWebookUrl, "", payload)

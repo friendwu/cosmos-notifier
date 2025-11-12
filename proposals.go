@@ -28,6 +28,27 @@ type Proposal struct {
 	Title            string      `json:"title"`
 	Summary          string      `json:"summary"`
 	Proposer         string      `json:"proposer"`
+	ValidatorVote    *Vote       `json:"validator_vote,omitempty"` // Validator's vote for this proposal
+}
+
+type Vote struct {
+	ProposalID string     `json:"proposal_id"`
+	Voter      string     `json:"voter"`
+	Options    []VoteOption `json:"options"` // API returns as array, but we only use the first one
+	Metadata   string     `json:"metadata"`
+}
+
+// GetOption returns the first (and only) vote option
+func (v *Vote) GetOption() string {
+	if v == nil || len(v.Options) == 0 {
+		return ""
+	}
+	return v.Options[0].Option
+}
+
+type VoteOption struct {
+	Option string `json:"option"` // VOTE_OPTION_YES, NO, ABSTAIN, NO_WITH_VETO
+	Weight string `json:"weight"`
 }
 
 func fetchProposals(cosmosEndpoint string) (map[string]Proposal, error) {
@@ -60,7 +81,7 @@ func fetchProposals(cosmosEndpoint string) (map[string]Proposal, error) {
 	return proposalsToMap(proposalsData.Proposals), nil
 }
 
-func fetchUncompletedProposals(cosmosEndpoint string) (map[string]Proposal, error) {
+func fetchUncompletedProposals(cosmosEndpoint string, validatorAddress string) (map[string]Proposal, error) {
 	proposals, err := fetchProposals(cosmosEndpoint)
 	if err != nil {
 		return make(map[string]Proposal), err
@@ -73,6 +94,15 @@ func fetchUncompletedProposals(cosmosEndpoint string) (map[string]Proposal, erro
 	uncompleted := make(map[string]Proposal)
 	for proposalID, proposal := range proposals {
 		if !isProposalCompleted(proposal.Status) {
+			// Fetch validator vote if validator address is configured
+			if validatorAddress != "" {
+				vote, err := fetchProposalVotes(cosmosEndpoint, proposalID, validatorAddress)
+				if err != nil {
+					// Log but don't fail - vote fetching is optional
+				} else {
+					proposal.ValidatorVote = vote
+				}
+			}
 			uncompleted[proposalID] = proposal
 		}
 	}
@@ -93,7 +123,40 @@ func isProposalCompleted(status string) bool {
 	return false
 }
 
-func fetchProposalByID(cosmosEndpoint string, proposalID string) (*Proposal, error) {
+func fetchProposalVotes(cosmosEndpoint string, proposalID string, validatorAddress string) (*Vote, error) {
+	url := fmt.Sprintf("%s/cosmos/gov/v1/proposals/%s/votes", cosmosEndpoint, proposalID)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var votesResponse struct {
+		Votes []Vote `json:"votes"`
+	}
+	err = json.Unmarshal(body, &votesResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the validator's vote
+	for _, vote := range votesResponse.Votes {
+		if vote.Voter == validatorAddress {
+			return &vote, nil
+		}
+	}
+
+	// Validator hasn't voted yet
+	return nil, nil
+}
+
+func fetchProposalByID(cosmosEndpoint string, proposalID string, validatorAddress string) (*Proposal, error) {
 	url := fmt.Sprintf("%s/cosmos/gov/v1/proposals/%s", cosmosEndpoint, proposalID)
 
 	resp, err := http.Get(url)
@@ -114,6 +177,17 @@ func fetchProposalByID(cosmosEndpoint string, proposalID string) (*Proposal, err
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return nil, err
+	}
+
+	// Fetch validator vote if validator address is configured
+	if validatorAddress != "" {
+		vote, err := fetchProposalVotes(cosmosEndpoint, proposalID, validatorAddress)
+		if err != nil {
+			// Log but don't fail - vote fetching is optional
+			// We'll handle this in the caller
+		} else {
+			response.Proposal.ValidatorVote = vote
+		}
 	}
 
 	return &response.Proposal, nil

@@ -26,6 +26,7 @@ type ChainConfig struct {
 	ChainID       string `yaml:"chain_id"`
 	Endpoint      string `yaml:"endpoint"`
 	ExplorerURL   string `yaml:"explorer_url,omitempty"`
+	Validator     string `yaml:"validator"`
 }
 
 func loadConfig(configPath string) (*Config, error) {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 // Define struct to match JSON structure
@@ -126,7 +127,10 @@ func isProposalCompleted(status string) bool {
 func fetchProposalVotes(cosmosEndpoint string, proposalID string, validatorAddress string) (*Vote, error) {
 	url := fmt.Sprintf("%s/cosmos/gov/v1/proposals/%s/votes", cosmosEndpoint, proposalID)
 
-	resp, err := http.Get(url)
+	client := http.Client{
+		Timeout: 60 * time.Second,
+	}
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +163,10 @@ func fetchProposalVotes(cosmosEndpoint string, proposalID string, validatorAddre
 func fetchProposalByID(cosmosEndpoint string, proposalID string, validatorAddress string) (*Proposal, error) {
 	url := fmt.Sprintf("%s/cosmos/gov/v1/proposals/%s", cosmosEndpoint, proposalID)
 
-	resp, err := http.Get(url)
+	client := http.Client{
+		Timeout: 60 * time.Second,
+	}
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}

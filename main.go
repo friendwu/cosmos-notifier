@@ -69,12 +69,14 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 			all[k] = v
 		}
 		
+		failed := false 
 		for proposalID, persistedProposal := range persisted {
 			currentProposal, err := fetchProposalByID(chainConfig.Endpoint, proposalID, chainConfig.Validator)
 			if err != nil {
-				log.Warnf("[%s] Error fetching persisted proposal %s: %s, keeping in persisted", 
+				log.Warnf("[%s] Error fetching latest status of persisted proposal %s: %s", 
 					chainConfig.ChainID, proposalID, err)
-				continue
+				failed = true
+				break 
 			}
 
 			if persistedProposal.Status != currentProposal.Status {
@@ -82,9 +84,12 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 			}
 		}
 
-		sendSlackFailed := false 
+		if failed {
+			time.Sleep(interval)
+			continue
+		}
+
 		result := compareProposals(all, persisted)
-		
 		if len(result.ProposalChanges) == 0 && len(result.VoteChanges) == 0 {
 			continue
 		}
@@ -94,7 +99,7 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 			err = postVoteChangeToSlack(chainConfig, voteChange, slackWebhookURL)
 			if err != nil {
 				log.Errorf("[%s] Error posting vote change to slack: %s", chainConfig.ChainID, err)
-				sendSlackFailed = true
+				failed = true
 				break
 			}
 		}
@@ -104,23 +109,26 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 			err = postProposalChangeToSlack(chainConfig, change, slackWebhookURL)
 			if err != nil {
 				log.Errorf("[%s] Error posting to slack: %s", chainConfig.ChainID, err)
-				sendSlackFailed = true
+				failed = true
 				break  
 			}
 		}
 
-		if !sendSlackFailed {
-			err = savePersistedProposals(dataDir, chainConfig.ChainID, uncompleted)
-			if err != nil {
-				log.Errorf("[%s] Error saving persisted proposals: %s", chainConfig.ChainID, err)
-			}
-
-			if err == nil {
-				// Update persisted map for next iteration
-				persisted = uncompleted // keep only uncompleted proposals TODO shall we do deep copy?
-			}
+		if failed {
+			time.Sleep(interval)
+			continue
+		}
+		
+		err = savePersistedProposals(dataDir, chainConfig.ChainID, uncompleted)
+		if err != nil {
+			//TODO: maybe we should notify to slack about this error. 
+			log.Errorf("[%s] Error saving persisted proposals: %s", chainConfig.ChainID, err)
+			time.Sleep(interval)
+			continue
 		}
 
+		// Update persisted map for next iteration
+		persisted = uncompleted // keep only uncompleted proposals TODO shall we do deep copy?
 		time.Sleep(interval)
 	}
 }

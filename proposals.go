@@ -190,8 +190,7 @@ func fetchProposalByID(cosmosEndpoint string, proposalID string, validatorAddres
 	if validatorAddress != "" {
 		vote, err := fetchProposalVotes(cosmosEndpoint, proposalID, validatorAddress)
 		if err != nil {
-			// Log but don't fail - vote fetching is optional
-			// We'll handle this in the caller
+			return nil, fmt.Errorf("error fetching validator vote for proposal %s: %s", proposalID, err)
 		} else {
 			response.Proposal.ValidatorVote = vote
 		}

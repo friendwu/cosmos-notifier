@@ -71,6 +71,10 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 		
 		failed := false 
 		for proposalID, persistedProposal := range persisted {
+			if _, exists := uncompleted[proposalID]; exists {
+				continue
+			}
+
 			currentProposal, err := fetchProposalByID(chainConfig.Endpoint, proposalID, chainConfig.Validator)
 			if err != nil {
 				log.Warnf("[%s] Error fetching latest status of persisted proposal %s: %s", 

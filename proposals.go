@@ -99,10 +99,9 @@ func fetchUncompletedProposals(cosmosEndpoint string, validatorAddress string) (
 			if validatorAddress != "" {
 				vote, err := fetchProposalVotes(cosmosEndpoint, proposalID, validatorAddress)
 				if err != nil {
-					// Log but don't fail - vote fetching is optional
-				} else {
-					proposal.ValidatorVote = vote
-				}
+					return nil, fmt.Errorf("error fetching validator vote for proposal %s: %s", proposalID, err)
+				} 
+				proposal.ValidatorVote = vote
 			}
 			uncompleted[proposalID] = proposal
 		}

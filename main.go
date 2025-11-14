@@ -100,6 +100,11 @@ func monitorChain(chainConfig ChainConfig, slackWebhookURL string, dataDir strin
 		
 		// Send vote change notifications
 		for _, voteChange := range result.VoteChanges {
+			//if completed proposal, skip its related vote change 
+			if isProposalCompleted(voteChange.Proposal.Status) {
+				continue
+			}
+			
 			err = postVoteChangeToSlack(chainConfig, voteChange, slackWebhookURL)
 			if err != nil {
 				log.Errorf("[%s] Error posting vote change to slack: %s", chainConfig.ChainID, err)
